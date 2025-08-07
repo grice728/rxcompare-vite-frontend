@@ -4,9 +4,45 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RxCompare</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 2rem; background: #f9f9f9; }
+      form input { display:block; margin:0.5rem 0; padding:0.5rem; width: 320px; max-width: 100%; }
+      button { padding:0.5rem 1rem; }
+      pre { margin-top:1rem; background:#fff; padding:1rem; border:1px solid #ddd; max-height:300px; overflow:auto; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="./src/main.js"></script>
+    <h1>RxCompare</h1>
+    <form id="searchForm">
+      <input type="text" name="drug" placeholder="Drug name" required />
+      <input type="text" name="dosage" placeholder="Dosage (e.g., 10mg)" required />
+      <input type="text" name="quantity" placeholder="Quantity (e.g., 30 tablets)" required />
+      <input type="text" name="zip" placeholder="ZIP code" required />
+      <button type="submit">Search</button>
+    </form>
+    <pre id="results"></pre>
+
+    <!-- Inline module script eliminates path resolution issues -->
+    <script type="module">
+      const form = document.querySelector('#searchForm');
+      const results = document.querySelector('#results');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        results.textContent = "Searching...";
+        try {
+          const res = await fetch('https://rxcompare-backend.onrender.com/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          const json = await res.json();
+          results.textContent = JSON.stringify(json, null, 2);
+        } catch (err) {
+          results.textContent = "Error: " + err.message;
+        }
+      });
+    </script>
   </body>
 </html>

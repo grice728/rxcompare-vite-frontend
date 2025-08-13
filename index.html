@@ -1,48 +1,350 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RxCompare</title>
-    <style>
-      body { font-family: Arial, sans-serif; padding: 2rem; background: #f9f9f9; }
-      form input { display:block; margin:0.5rem 0; padding:0.5rem; width: 320px; max-width: 100%; }
-      button { padding:0.5rem 1rem; }
-      pre { margin-top:1rem; background:#fff; padding:1rem; border:1px solid #ddd; max-height:300px; overflow:auto; }
-    </style>
-  </head>
-  <body>
-    <h1>RxCompare</h1>
-    <form id="searchForm">
-      <input type="text" name="drug" placeholder="Drug name" required />
-      <input type="text" name="dosage" placeholder="Dosage (e.g., 10mg)" required />
-      <input type="text" name="quantity" placeholder="Quantity (e.g., 30 tablets)" required />
-      <input type="text" name="zip" placeholder="ZIP code" required />
-      <button type="submit">Search</button>
-    </form>
-    <pre id="results"></pre>
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1"
+  />
+  <title>RxCompare</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <header class="bg-white border-b">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+      <h1 class="text-xl sm:text-2xl font-bold">💊 RxCompare</h1>
+      <span class="text-xs sm:text-sm text-slate-500">Find the lowest cash price</span>
+    </div>
+  </header>
 
-    <!-- Inline module script eliminates path resolution issues -->
-    <script type="module">
-      const form = document.querySelector('#searchForm');
-      const results = document.querySelector('#results');
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    <!-- Pricing/Gating banner (dynamic) -->
+    <div id="gatingBanner" class="hidden mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm"></div>
 
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const data = Object.fromEntries(new FormData(form));
-        results.textContent = "Searching...";
-        try {
-          const res = await fetch('https://rxcompare-backend.onrender.com/api/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-          });
-          const json = await res.json();
-          results.textContent = JSON.stringify(json, null, 2);
-        } catch (err) {
-          results.textContent = "Error: " + err.message;
+    <!-- Search Card -->
+    <div class="bg-white rounded-xl shadow-sm border p-4 sm:p-6">
+      <h2 class="text-lg font-semibold mb-4">Find the best price</h2>
+      <form id="searchForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <input name="drug" placeholder="Drug name (e.g., atorvastatin)" required class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring focus:ring-blue-200" />
+        <input name="dosage" placeholder="Dosage (e.g., 10mg)" required class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring focus:ring-blue-200" />
+        <input name="quantity" placeholder="Quantity (e.g., 30 tablets)" required class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring focus:ring-blue-200" />
+        <input name="zip" placeholder="ZIP code" required class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring focus:ring-blue-200" />
+
+        <div class="sm:col-span-2 lg:col-span-4 flex flex-wrap items-center gap-3">
+          <button type="submit" id="submitBtn" class="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg id="spinner" class="hidden animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="white" stroke-width="4" fill="none"></circle>
+              <path class="opacity-75" fill="white" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span>Search</span>
+          </button>
+          <div class="text-xs text-slate-500">Tip: Try a nearby ZIP to compare regional prices.</div>
+        </div>
+      </form>
+      <p id="error" class="hidden mt-3 text-sm text-red-600"></p>
+    </div>
+
+    <!-- Tabs -->
+    <div id="resultsTabs" class="hidden mt-6">
+      <div role="tablist" class="flex gap-2">
+        <button id="tabCards" class="px-3 py-2 rounded-lg bg-slate-200 text-slate-800 text-sm">Cards</button>
+        <button id="tabMatrix" class="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">Matrix</button>
+      </div>
+    </div>
+
+    <!-- Best Price -->
+    <section id="bestSection" class="hidden mt-4">
+      <h3 class="text-lg font-semibold mb-3">Best price</h3>
+      <div id="bestCard" class="bg-emerald-50 border border-emerald-200 rounded-xl p-4"></div>
+    </section>
+
+    <!-- Cards View -->
+    <section id="cardsSection" class="hidden mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">All prices</h3>
+        <div class="text-sm text-slate-500">
+          Sort:
+          <button id="sortPrice" class="underline hover:text-slate-700">Price</button>
+          •
+          <button id="sortSource" class="underline hover:text-slate-700">Source</button>
+          •
+          <button id="sortPharmacy" class="underline hover:text-slate-700">Pharmacy</button>
+        </div>
+      </div>
+      <div id="cardsList" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </section>
+
+    <!-- Matrix View -->
+    <section id="matrixSection" class="hidden mt-6">
+      <h3 class="text-lg font-semibold mb-3">Matrix (sources × pharmacies)</h3>
+      <div id="matrixWrap" class="overflow-auto border rounded-xl bg-white"></div>
+      <p class="mt-2 text-xs text-slate-500">Click a price to open the offer in a new tab.</p>
+    </section>
+  </main>
+
+  <footer class="max-w-5xl mx-auto px-4 pb-8 text-center text-xs text-slate-500">
+    Prices are best-effort from public sources and may vary at checkout. Always verify on the source before purchasing.
+  </footer>
+
+  <!-- Inline module script -->
+  <script type="module">
+    const API = 'https://rxcompare-backend.onrender.com/api/search';
+
+    // --- Basic gating (front-end MVP) ---
+    const FREE_SEARCHES = 1;
+    const gatingBanner = document.querySelector('#gatingBanner');
+    const usageKey = 'rxc_search_count';
+    const referredKey = 'rxc_referred';
+    const params = new URLSearchParams(location.search);
+    if (params.get('ref')) {
+      // A simple referral marker; in a real app, send to backend to credit inviter.
+      localStorage.setItem(referredKey, '1');
+    }
+
+    function getSearchCount() {
+      return parseInt(localStorage.getItem(usageKey) || '0', 10);
+    }
+    function incSearchCount() {
+      localStorage.setItem(usageKey, String(getSearchCount() + 1));
+    }
+    function canSearch() {
+      const baseAllowed = getSearchCount() < FREE_SEARCHES;
+      const referralBoost = localStorage.getItem(referredKey) === '1'; // unlock if arrived via referral link (MVP)
+      return baseAllowed || referralBoost;
+    }
+    function showGateIfNeeded() {
+      if (canSearch()) {
+        gatingBanner.classList.add('hidden');
+        return;
+      }
+      gatingBanner.innerHTML = `
+        <strong>Free search used.</strong> Create an account to continue, or share your link to unlock free searches:
+        <span class="inline-block mt-1 px-2 py-1 bg-white border rounded text-xs">${location.origin + location.pathname}?ref=YOURCODE</span>
+      `;
+      gatingBanner.classList.remove('hidden');
+    }
+    showGateIfNeeded();
+
+    // --- DOM refs ---
+    const form = document.querySelector('#searchForm');
+    const submitBtn = document.querySelector('#submitBtn');
+    const spinner = document.querySelector('#spinner');
+    const errorEl = document.querySelector('#error');
+    const resultsTabs = document.querySelector('#resultsTabs');
+
+    const bestSection = document.querySelector('#bestSection');
+    const bestCard = document.querySelector('#bestCard');
+
+    const cardsSection = document.querySelector('#cardsSection');
+    const cardsList = document.querySelector('#cardsList');
+
+    const matrixSection = document.querySelector('#matrixSection');
+    const matrixWrap = document.querySelector('#matrixWrap');
+
+    const tabCards = document.querySelector('#tabCards');
+    const tabMatrix = document.querySelector('#tabMatrix');
+
+    const sortPriceBtn = document.querySelector('#sortPrice');
+    const sortSourceBtn = document.querySelector('#sortSource');
+    const sortPharmacyBtn = document.querySelector('#sortPharmacy');
+
+    let lastResults = [];
+
+    function setLoading(isLoading) {
+      submitBtn.disabled = isLoading;
+      spinner.classList.toggle('hidden', !isLoading);
+    }
+    function fmtCurrency(n) {
+      if (typeof n !== 'number') return n;
+      return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+    }
+    function sourceBadge(source) {
+      const map = {
+        'Cost Plus Drugs': 'bg-emerald-600',
+        'Walmart $4 List': 'bg-indigo-600',
+        'SingleCare': 'bg-blue-600',
+        'Blink Health': 'bg-fuchsia-600',
+        'WellRx': 'bg-amber-600',
+        'Honeybee Health': 'bg-rose-600',
+        'Costco Pharmacy': 'bg-slate-700'
+      };
+      const color = map[source] || 'bg-slate-600';
+      return `<span class="text-white text-[11px] px-2 py-0.5 rounded ${color}">${source || 'Source'}</span>`;
+    }
+
+    function renderBest(best) {
+      bestCard.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-2xl font-bold">${fmtCurrency(best.price)}</span>
+              ${sourceBadge(best.source)}
+            </div>
+            <p class="text-sm text-slate-600 mt-1">
+              <strong>${best.pharmacy || 'Pharmacy'}</strong> • ${best.dosage || ''} ${best.quantity || ''}
+            </p>
+          </div>
+          <a href="${best.url}" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg">
+            View offer
+          </a>
+        </div>`;
+      bestSection.classList.remove('hidden');
+    }
+
+    function renderCards(list) {
+      cardsList.innerHTML = list.map(item => `
+        <div class="bg-white border rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-semibold">${item.pharmacy || 'Pharmacy'}</span>
+              ${sourceBadge(item.source)}
+            </div>
+            <p class="text-sm text-slate-600">
+              ${item.dosage || ''} ${item.quantity || ''}
+            </p>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-bold">${fmtCurrency(item.price)}</div>
+            <a href="${item.url}" target="_blank" rel="noopener noreferrer"
+               class="text-sm text-blue-700 underline">Open</a>
+          </div>
+        </div>`).join('');
+      cardsSection.classList.remove('hidden');
+    }
+
+    function renderMatrix(list) {
+      // Build rows (pharmacies) × cols (sources)
+      const sources = Array.from(new Set(list.map(r => r.source || 'Unknown'))).sort();
+      const pharmacies = Array.from(new Set(list.map(r => r.pharmacy || 'Unknown'))).sort();
+
+      // Map (pharmacy, source) -> item
+      const cell = {};
+      for (const r of list) {
+        const key = `${(r.pharmacy||'Unknown')}__${(r.source||'Unknown')}`;
+        if (!cell[key] || (typeof r.price === 'number' && r.price < cell[key].price)) {
+          cell[key] = r;
         }
-      });
-    </script>
-  </body>
+      }
+
+      // Build table
+      let html = `
+        <table class="min-w-[640px] w-full text-sm">
+          <thead>
+            <tr>
+              <th class="text-left p-3 bg-slate-100 border-b">Pharmacy ↓ / Source →</th>
+              ${sources.map(s => `<th class="text-left p-3 bg-slate-100 border-b">${s}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${pharmacies.map(ph => `
+              <tr class="border-b">
+                <td class="p-3 font-medium">${ph}</td>
+                ${sources.map(src => {
+                  const k = `${ph}__${src}`;
+                  const r = cell[k];
+                  if (!r) return `<td class="p-3 text-slate-400">—</td>`;
+                  const price = typeof r.price === 'number' ? fmtCurrency(r.price) : r.price;
+                  return `<td class="p-3">
+                    <a href="${r.url}" target="_blank" rel="noopener noreferrer"
+                       class="inline-flex items-center gap-2 px-2 py-1 rounded border hover:bg-slate-50">
+                      <span>${price}</span>
+                    </a>
+                  </td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+      matrixWrap.innerHTML = html;
+    }
+
+    function activateTab(which) {
+      const isCards = which === 'cards';
+      tabCards.className = isCards
+        ? "px-3 py-2 rounded-lg bg-slate-200 text-slate-800 text-sm"
+        : "px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm";
+      tabMatrix.className = !isCards
+        ? "px-3 py-2 rounded-lg bg-slate-200 text-slate-800 text-sm"
+        : "px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm";
+      cardsSection.classList.toggle('hidden', !isCards);
+      matrixSection.classList.toggle('hidden', isCards);
+    }
+
+    tabCards.addEventListener('click', () => activateTab('cards'));
+    tabMatrix.addEventListener('click', () => activateTab('matrix'));
+
+    sortPriceBtn.addEventListener('click', () => {
+      if (!lastResults.length) return;
+      const sorted = [...lastResults].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+      renderCards(sorted);
+    });
+    sortSourceBtn.addEventListener('click', () => {
+      if (!lastResults.length) return;
+      const sorted = [...lastResults].sort((a, b) => (a.source || '').localeCompare(b.source || ''));
+      renderCards(sorted);
+    });
+    sortPharmacyBtn.addEventListener('click', () => {
+      if (!lastResults.length) return;
+      const sorted = [...lastResults].sort((a, b) => (a.pharmacy || '').localeCompare(b.pharmacy || ''));
+      renderCards(sorted);
+    });
+
+    function normalizeResults(json) {
+      const all = Array.isArray(json.all_results) ? [...json.all_results] : [];
+      // Only keep entries with numeric price
+      return all.filter(r => typeof r.price === 'number' && !isNaN(r.price));
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.classList.add('hidden');
+
+      if (!canSearch()) {
+        showGateIfNeeded();
+        errorEl.textContent = "Free search used. Please sign up or use a referral link to continue.";
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      bestSection.classList.add('hidden');
+      cardsSection.classList.add('hidden');
+      matrixSection.classList.add('hidden');
+      resultsTabs.classList.add('hidden');
+      cardsList.innerHTML = '';
+      matrixWrap.innerHTML = '';
+      setLoading(true);
+
+      const data = Object.fromEntries(new FormData(form));
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+
+        const all = normalizeResults(json);
+        if (!all.length) throw new Error('No prices returned. Try a nearby ZIP or different quantity.');
+
+        // Track usage (MVP gating)
+        incSearchCount();
+        showGateIfNeeded();
+
+        lastResults = all.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+        if (json.best_price) renderBest(json.best_price);
+        renderCards(lastResults);
+        renderMatrix(lastResults);
+        resultsTabs.classList.remove('hidden');
+        activateTab('cards');
+      } catch (err) {
+        errorEl.textContent = err.message || 'Something went wrong. Please try again.';
+        errorEl.classList.remove('hidden');
+      } finally {
+        setLoading(false);
+      }
+    });
+  </script>
+</body>
 </html>
